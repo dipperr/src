@@ -61,7 +61,7 @@ class Utilidades:
 class Dialogo(ft.Container):
     def __init__(self) -> None:
         super().__init__(
-            width=250,
+            width=300,
             height=120,
             bgcolor=ft.Colors.PRIMARY_CONTAINER,
             border_radius=ft.border_radius.all(10),

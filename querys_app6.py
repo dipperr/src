@@ -6,8 +6,13 @@ WHERE relacao.id_produto = ?;
 """
 
 criar_log = """
-INSERT INTO log_compra_produtos(id_produto, id_fornecedor, preco, quantidade, preco_operacao, data_operacao, marca, desconto)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO log_compra_produtos(id_produto, id_fornecedor, preco, quantidade, preco_operacao, data_operacao, marca, saving, menor_valor)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?);
+"""
+
+criar_log_item_variavel = """
+INSERT INTO log_item_variavel(id_fornecedor, nome, medida, preco, quantidade, categoria, marca, data, preco_operacao)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?);
 """
 
 apagar_log = "DELETE FROM log_compra_produtos WHERE id = ?;"
@@ -32,24 +37,32 @@ atualizar_consumo_produto = "UPDATE consumo_dia SET valor = ? WHERE id_produto =
 
 obter_dados_consumo = "SELECT dia_semana, valor FROM consumo_dia WHERE id_produto = ?;"
 
-obter_dados_infos = "SELECT armazenamento, validade FROM infos_produto WHERE produto_id = ?;"
+obter_dados_infos = """
+SELECT armazenamento, validade, qtd_media, frequencia, preco_medio, perdas, path_imagem
+FROM infos_produto WHERE produto_id = ?;
+"""
+
+obter_dados_infos_estatisticas = """
+SELECT armazenamento, validade, qtd_media, frequencia, preco_medio, perdas
+FROM infos_produto WHERE produto_id = ?;
+"""
 
 inserir_valores_infos = """
-INSERT INTO infos_produto(produto_id, armazenamento, validade)
-VALUES(?, ?, ?)
+INSERT INTO infos_produto(produto_id, armazenamento, validade, qtd_media, frequencia, preco_medio, perdas, path_imagem)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(produto_id)
-DO UPDATE SET armazenamento = ?, validade = ?;
+DO UPDATE SET armazenamento = ?, validade = ?, qtd_media = ?, frequencia = ?, preco_medio = ?, perdas = ?, path_imagem=?;
 """
 
 obter_logs = """
-SELECT log.id, log.data_operacao, fornecedor.nome, log.quantidade, log.preco, log.preco_operacao, log.marca, log.desconto
+SELECT log.id, log.data_operacao, fornecedor.nome, log.quantidade, log.preco, log.preco_operacao, log.marca, log.saving, log.menor_valor
 FROM log_compra_produtos AS log
 INNER JOIN fornecedor ON log.id_fornecedor = fornecedor.id
 WHERE log.id_produto = ? AND date(log.data_operacao) BETWEEN date(?) AND date(?);
 """
 
 obter_todos_logs = """
-SELECT log.id, log.data_operacao, fornecedor.nome, log.quantidade, log.preco, log.preco_operacao, log.marca, log.desconto
+SELECT log.id, log.data_operacao, fornecedor.nome, log.quantidade, log.preco, log.preco_operacao, log.marca, log.saving, log.menor_valor
 FROM log_compra_produtos AS log
 INNER JOIN fornecedor ON log.id_fornecedor = fornecedor.id
 WHERE log.id_produto = ?;
@@ -59,14 +72,19 @@ adicionar_fornecedor = """
 INSERT INTO fornecedor(nome, telefone, responsavel, logradouro, numero, bairro, cep, cidade, estado)
 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?);"""
 
-selecionar_produtos = "SELECT * FROM produto ORDER BY nome ASC;"
+selecionar_produtos = """
+SELECT produto.id, produto.nome, produto.medida, produto.categoria, info.path_imagem
+FROM produto
+LEFT JOIN infos_produto AS info ON produto.id = info.produto_id
+ORDER BY nome ASC;
+"""
 
 obter_medida_produto = "SELECT medida FROM produto WHERE id = ?;"
 
 obter_dados_fornecedores = "SELECT * FROM fornecedor;"
 
 obter_logs_para_dash = """
-SELECT p.nome AS nome_produto, p.categoria, p.medida, l.quantidade, l.data_operacao, l.preco, l.preco_operacao
+SELECT p.nome AS nome_produto, p.categoria, p.medida, l.quantidade, l.data_operacao, l.preco, l.preco_operacao, l.saving, l.menor_valor
 FROM log_compra_produtos AS l
 INNER JOIN produto AS p ON l.id_produto = p.id
 INNER JOIN fornecedor AS f ON l.id_fornecedor = f.id
@@ -75,10 +93,12 @@ BETWEEN date(?) AND date(?);
 """
 
 obter_todos_logs_para_dash = """
-SELECT p.nome AS nome_produto, p.categoria, p.medida, l.quantidade, l.data_operacao, l.preco, l.preco_operacao
+SELECT p.nome AS nome_produto, p.categoria, p.medida, l.quantidade, l.data_operacao, l.preco, l.preco_operacao, l.saving, l.menor_valor
 FROM log_compra_produtos AS l
 INNER JOIN produto AS p ON l.id_produto = p.id
 INNER JOIN fornecedor AS f ON l.id_fornecedor = f.id;
 """
 
 apagar_fornecedor = "DELETE FROM fornecedor WHERE id = ?;"
+
+obter_path_image = "SELECT path_imagem FROM infos_produto WHERE produto_id = ?"

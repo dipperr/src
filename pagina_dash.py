@@ -12,7 +12,7 @@ import querys_app6 as q6
 
 
 locale.setlocale(locale.LC_ALL, "pt_BR.UTF-8")
-
+pd.set_option('display.max_columns', None)
 
 class Graficos:
     def total_categoria(self, df: pd.DataFrame) -> PlotlyChart:
@@ -29,7 +29,7 @@ class Graficos:
             showlegend=False,
             yaxis=dict(tickfont=dict(size=20), gridcolor="#f2f3fa"),
             xaxis=dict(tickfont=dict(size=20), gridcolor="#747575"),
-            barcornerradius=15,
+            barcornerradius=30,
             width=1000
         )
         return PlotlyChart(fig, expand=True)
@@ -79,7 +79,7 @@ class OperadorDados:
     
     def serie_categoria(self, df: pd.DataFrame) -> pd.DataFrame:
         freq = self.definir_frequencia(df)
-        return (
+        _df =  (
             df
             .sort_values("data_operacao")
             .groupby("categoria")
@@ -93,10 +93,11 @@ class OperadorDados:
             )
             .reset_index()
         )
+        return _df[_df["preco_operacao"] > 0]
 
     def serie_total(self, df: pd.DataFrame) -> pd.DataFrame:
         freq = self.definir_frequencia(df)
-        return (
+        _df =  (
             df
             .sort_values("data_operacao")
             .set_index("data_operacao")
@@ -104,19 +105,26 @@ class OperadorDados:
             .agg({"preco_operacao": "sum"})
             .ffill()
         )
+        return _df[_df["preco_operacao"] > 0]
 
     def dados_tabela(self, df: pd.DataFrame, categoria: str) -> pd.DataFrame:
+        def calcular_perda(grupo):
+            return grupo['preco_operacao'].sum() - (grupo['quantidade'] * grupo['menor_valor']).sum() + grupo['saving'].sum()
+
         df_fil = df[df["categoria"] == categoria]
-        return (
+        df_group = (
             df_fil.groupby(['nome_produto', 'medida'])
             .agg(
                 quantidade=("quantidade", "sum"),
                 preco_operacao=("preco_operacao", "sum"),
-                variacao_preco=("preco", lambda x: x.max() - x.min()),
-                preco=("preco", "min")
+                saving=("saving", "sum")
             )
             .reset_index()
         )
+        df_perda = df_fil.groupby('nome_produto').apply(calcular_perda, include_groups=False).reset_index(name='perda')
+        df_perda["perda"] = df_perda["perda"].clip(lower=0)
+        df_merge = pd.merge(df_group, df_perda, on="nome_produto", how="left")
+        return df_merge
     
     def definir_frequencia(self, df: pd.DataFrame) -> str:
         dias = (df["data_operacao"].max() - df["data_operacao"].min()).days
@@ -127,6 +135,15 @@ class OperadorDados:
         else:
             freq = "ME"
         return freq
+
+    def estatisticas_cartoes(self, dados: pd.DataFrame) -> list:
+        dados["quantidade"] = pd.to_numeric(dados["quantidade"])
+        total_valor = dados["preco_operacao"].sum()
+        qtd_x_menor_preco = dados["quantidade"] * dados["menor_valor"]
+        perda = dados["preco_operacao"].sum() - qtd_x_menor_preco.sum() + dados["saving"].sum()
+        saving = dados["saving"].sum()
+        return (total_valor, perda, saving)
+
 
 
 class AreaGrafico(ft.Card, ABC):
@@ -209,8 +226,8 @@ class TabelaDashboard(ft.DataTable):
                 ft.DataColumn(ft.Text("Nome")),
                 ft.DataColumn(ft.Text("Quantidade")),
                 ft.DataColumn(ft.Text("Valor Gasto"), on_sort=self.ordernar_dados),
-                ft.DataColumn(ft.Text("Preço")),
-                ft.DataColumn(ft.Text("Var. Preço"))
+                ft.DataColumn(ft.Text("Perda")),
+                ft.DataColumn(ft.Text("Saving"))
             ],
             sort_column_index=2,
             sort_ascending=False,
@@ -226,8 +243,8 @@ class TabelaDashboard(ft.DataTable):
                     ft.DataCell(ft.Text(row["nome_produto"], max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)),
                     ft.DataCell(ft.Text(self.formatar_quantidade(row["quantidade"], row["medida"]))),
                     ft.DataCell(ft.Text(locale.currency(row["preco_operacao"], grouping=True))),
-                    ft.DataCell(ft.Text(locale.currency(row["preco"], grouping=True))),
-                    ft.DataCell(ft.Text(locale.currency(row["variacao_preco"], grouping=True)))
+                    ft.DataCell(ft.Text(locale.currency(row["perda"], grouping=True))),
+                    ft.DataCell(ft.Text(locale.currency(row["saving"], grouping=True)))
                 ]
             )
             for i, row in self.dados.iterrows()
@@ -260,7 +277,8 @@ class PaginaDashboard(ft.Container):
     
     def criar_estrutura(self) -> None:
         self.text_total_gasto = ft.Text("R$ 00,00", size=17, weight=ft.FontWeight.W_500)
-        self.text_num_compras = ft.Text("00", size=17, weight=ft.FontWeight.W_500)
+        self.text_perdas = ft.Text("R$ 00,00", size=17, weight=ft.FontWeight.W_500)
+        self.text_saving = ft.Text("R$ 00,00", size=17, weight=ft.FontWeight.W_500)
         self.botao_filtro = ft.PopupMenuButton(icon=ft.Icons.FILTER_ALT, tooltip="Categorias")
         self.content = ft.ResponsiveRow([
             ft.Column([
@@ -268,22 +286,41 @@ class PaginaDashboard(ft.Container):
                     ft.Card(
                         ft.Container(
                             ft.Column([
-                                ft.Text("Valor Gasto", size=20, weight=ft.FontWeight.W_500),
+                                ft.Row([
+                                    ft.Text("Valor Gasto", size=20, weight=ft.FontWeight.W_500),
+                                    ft.Icon(ft.Icons.ATTACH_MONEY_ROUNDED, size=20, color=ft.Colors.GREEN)
+                                ]),
                                 self.text_total_gasto
                             ], spacing=5),
                             padding=ft.padding.only(top=5, left=20, bottom=5)
                         ),
-                        col=6, elevation=5
+                        col=4, elevation=5
                     ),
                     ft.Card(
                         ft.Container(
                             ft.Column([
-                                ft.Text("Dias Registrados", size=20, weight=ft.FontWeight.W_500),
-                                self.text_num_compras
+                                ft.Row([
+                                    ft.Text("Saving", size=20, weight=ft.FontWeight.W_500),
+                                    ft.Icon(ft.Icons.ARROW_UPWARD_ROUNDED, size=20, color=ft.Colors.GREEN)
+                                ]),
+                                self.text_saving
                             ], spacing=5),
                             padding=ft.padding.only(top=5, left=20, bottom=5)
                         ),
-                        col=6, elevation=5
+                        col=4, elevation=5
+                    ),
+                    ft.Card(
+                        ft.Container(
+                            ft.Column([
+                                ft.Row([
+                                    ft.Text("Perdas", size=20, weight=ft.FontWeight.W_500),
+                                    ft.Icon(ft.Icons.ARROW_DOWNWARD_ROUNDED, size=20, color=ft.Colors.RED)
+                                ]),
+                                self.text_perdas
+                            ], spacing=5),
+                            padding=ft.padding.only(top=5, left=20, bottom=5)
+                        ),
+                        col=4, elevation=5
                     )
                 ]),
                 ft.Card(
@@ -381,12 +418,16 @@ class PaginaDashboard(ft.Container):
         self.text_intervalo_data.update()
 
     def atualizar_cards(self) -> None:
-        total_valor = round(self.df["preco_operacao"].sum(), 2)
-        total_compras = self.df["data_operacao"].nunique()
+        oper_dados = OperadorDados()
+        total_valor, perda, saving = oper_dados.estatisticas_cartoes(self.df.copy())
         self.text_total_gasto.value = locale.currency(total_valor, grouping=True)
-        self.text_num_compras.value = total_compras
-        self.text_total_gasto.update()
-        self.text_num_compras.update()
+        self.atualizar_valor(self.text_total_gasto, locale.currency(total_valor, grouping=True))
+        self.atualizar_valor(self.text_perdas, locale.currency(perda, grouping=True))
+        self.atualizar_valor(self.text_saving, locale.currency(saving, grouping=True))
+
+    def atualizar_valor(self, atributo, valor: int):
+        atributo.value = valor
+        atributo.update()
 
     def adicionar_categorias_botao(self) -> None:
         categorias = self.df["categoria"].unique()
@@ -412,26 +453,40 @@ class PaginaDashboard(ft.Container):
     async def ler_dados(self) -> None:
         db = BancoDeDados("db_app6.db")
         dados = await db.fetch_all(q6.obter_logs_para_dash, (self.data_inicio.strftime("%Y-%m-%d"), self.data_fim.strftime("%Y-%m-%d")))
-
-        self.criar_df(dados)
-        self.atualizar_cards()
-        self.criar_grafico()
-        self.adicionar_categorias_botao()
+        if dados:
+            self.criar_df(dados)
+            self.atualizar_cards()
+            self.criar_grafico()
+            self.adicionar_categorias_botao()
 
     async def ler_todos_dados(self) -> None:
         db = BancoDeDados("db_app6.db")
         dados = await db.fetch_all(q6.obter_todos_logs_para_dash)
 
-        self.criar_df(dados)
-        self.atualizar_cards()
-        self.criar_grafico()
-        self.adicionar_categorias_botao()
+        if dados:
+            self.criar_df(dados)
+            self.atualizar_cards()
+            self.criar_grafico()
+            self.adicionar_categorias_botao()
 
         self.data_inicio = self.df["data_operacao"].min()
         self.data_fim = self.df["data_operacao"].max()
 
     def criar_df(self, dados: list) -> None:
-        self.df = pd.DataFrame(dados, columns=["nome_produto", "categoria", "medida", "quantidade", "data_operacao", "preco", "preco_operacao"])
+        self.df = pd.DataFrame(
+            dados,
+            columns=[
+                "nome_produto",
+                "categoria",
+                "medida",
+                "quantidade",
+                "data_operacao",
+                "preco",
+                "preco_operacao",
+                "saving",
+                "menor_valor"
+            ]
+        )
         self.df["data_operacao"] = pd.to_datetime(self.df["data_operacao"])
         self.df["quantidade"] = pd.to_numeric(self.df["quantidade"])
     

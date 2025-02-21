@@ -3,14 +3,14 @@ import locale
 from datetime import datetime, timedelta
 import numpy as np
 from abc import ABC, abstractmethod
-from typing import Union, Callable
+from typing import Union, Callable, List, Tuple
 import pandas as pd
 from flet.plotly_chart import PlotlyChart
 import plotly.graph_objects as go
 import unicodedata
 
 from acessorios import BancoDeDados, Utilidades, JanelaNotificacao
-from controles import ControleLog, ControleItem
+from controles import ControleLog, ControleItem, ControlePagina
 from modelos import ModeloItem
 import querys_app6 as q6
 
@@ -34,14 +34,14 @@ class JanelaRemover(ft.AlertDialog, ABC):
         self.content = ft.Text(value="Deseja realmente excluir o registro?", size=15)
         self.actions = [
             ft.TextButton(
-                content=ft.Text(value="Sim", color=ft.colors.BLACK87), 
+                content=ft.Text(value="Sim", color=ft.Colors.BLACK87), 
                 on_click=self.sim,
-                style=ft.ButtonStyle(bgcolor={ft.ControlState.HOVERED: ft.colors.GREEN_100})
-            ),
+                style=ft.ButtonStyle(bgcolor={ft.ControlState.HOVERED: ft.Colors.GREEN_100})
+        ),
             ft.TextButton(
-                content=ft.Text(value="Não", color=ft.colors.BLACK87),
+                content=ft.Text(value="Não", color=ft.Colors.BLACK87),
                 on_click=self.nao,
-                style=ft.ButtonStyle(bgcolor={ft.ControlState.HOVERED: ft.colors.RED_100})
+                style=ft.ButtonStyle(bgcolor={ft.ControlState.HOVERED: ft.Colors.RED_100})
             )
         ]
     @abstractmethod
@@ -182,7 +182,7 @@ class TabelaFornecedor(ft.DataTable):
             ],
             rows=[],
             col=12,
-            column_spacing=30,
+            column_spacing=20,
             sort_column_index=2,
             sort_ascending=True,
             heading_row_height=40
@@ -199,7 +199,7 @@ class TabelaFornecedor(ft.DataTable):
         self.rows.append(
             ft.DataRow(
                 cells=[
-                    ft.DataCell(ft.Text(value=nome[:15].title(), overflow=ft.TextOverflow.ELLIPSIS, max_lines=1, tooltip=nome.title())),
+                    ft.DataCell(ft.Text(value=nome[:20].title(), overflow=ft.TextOverflow.ELLIPSIS, max_lines=1, tooltip=nome.title())),
                     ft.DataCell(ft.Text(value=marca[:10].title(), overflow=ft.TextOverflow.ELLIPSIS, max_lines=1, tooltip=marca.title())),
                     ft.DataCell(ft.Text(value=locale.currency(preco, grouping=True)), show_edit_icon=True, on_tap=editar_ao_clicar),
                     ft.DataCell(
@@ -301,8 +301,8 @@ class TabelaLogProduto(ft.DataTable):
                 ft.DataColumn(ft.Text(value="Marca")),
                 ft.DataColumn(ft.Text(value="Quantidade")),
                 ft.DataColumn(ft.Text(value="Preco")),
-                ft.DataColumn(ft.Text(value="Desconto")),
                 ft.DataColumn(ft.Text(value="Valor Operação")),
+                ft.DataColumn(ft.Text(value="Saving")),
                 ft.DataColumn(ft.Text(value="Apagar"))
             ],
             rows=[],
@@ -316,12 +316,14 @@ class TabelaLogProduto(ft.DataTable):
         self.controle_pagina = controle_pagina
 
     def adicionar_registros(self, dados: list) -> None:
+        self.rows.clear()
         if dados:
             self.rows.clear()
             self.dados = self.ordernar_dados(dados)
             for dado in self.dados:
                 self.adicionar_linha(dado)
-            self.update()
+        
+        self.update()
 
     def adicionar_linha(self, dado: list) -> None:
         async def deletar_ao_clicar(e, id=dado[0]):
@@ -331,13 +333,13 @@ class TabelaLogProduto(ft.DataTable):
             ft.DataRow(
                 cells=[
                     ft.DataCell(ft.Text(dado[0]), visible=False),
-                    ft.DataCell(ft.Text(datetime.strptime(dado[1], "%Y-%m-%d").strftime("%d-%m-%Y"))),
-                    ft.DataCell(ft.Text(dado[2][:15], overflow=ft.TextOverflow.ELLIPSIS)),
-                    ft.DataCell(ft.Text(dado[6][:15])),
+                    ft.DataCell(ft.Text(datetime.strptime(dado[1], "%Y-%m-%d").strftime("%a %d-%m-%Y"))),
+                    ft.DataCell(ft.Text(dado[2][:20], overflow=ft.TextOverflow.ELLIPSIS)),
+                    ft.DataCell(ft.Text(dado[6][:10])),
                     ft.DataCell(ft.Text(f"{dado[3].replace(".", ",")} {Utilidades.encurtar_medida(self.item.medida)}")),
                     ft.DataCell(ft.Text(locale.currency(dado[4], grouping=True))),
-                    ft.DataCell(ft.Text(locale.currency(dado[7], grouping=True))),
                     ft.DataCell(ft.Text(locale.currency(dado[5], grouping=True))),
+                    ft.DataCell(ft.Text(locale.currency(dado[7], grouping=True))),
                     ft.DataCell(ft.IconButton(icon=ft.Icons.DELETE, on_click=deletar_ao_clicar))
                 ]
             )
@@ -375,7 +377,7 @@ class TabelaConsumo(ft.DataTable):
                             ft.Text(value="0"),
                             show_edit_icon=True,
                             on_tap=self.abrir_janela_edicao,
-                            data=i
+                            data=i,
                         )
                     ]
                 )
@@ -413,35 +415,136 @@ class TabelaConsumo(ft.DataTable):
         self.controle = controle
 
 
-class Acondicionamento(ft.Container):
-    def __init__(self) -> None:
+class Configuracoes(ft.Container):
+    def __init__(self, controle_pagina: ControlePagina) -> None:
         super().__init__(
-            padding=ft.padding.only(left=10, top=30, right=10, bottom=10)
+            padding=ft.padding.only(left=10, top=10, right=10, bottom=10)
         )
+        self.controle_pagina = controle_pagina
         self.controle = None
-        self.field_armazenamento = ft.TextField(label="Capacidade", width=205, border="underline")
-        self.field_dias = ft.TextField(label="Dias Máximo", width=200, suffix_text="Dias", border="underline")
+        self.field_armazenamento = ft.TextField(label="Capacidade", col=5, border="underline")
+        self.field_dias = ft.TextField(label="Dias Máximo", col=5, suffix_text="Dias", border="underline")
+        self.field_qtd_media = ft.TextField(label="Qtd. Média", border="underline", suffix_text="%", col=5)
+        self.field_frequencia = ft.TextField(label="Frequência", border="underline", suffix_text="%", col=5)
+        self.field_preco_medio = ft.TextField(label="Preço Médio", border="underline", suffix_text="%", col=5)
+        self.field_perdas = ft.TextField(label="Perdas", border="underline", suffix_text="%", col=5)
+
+        self.path_imagem = ft.Text(col=10, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
+
         self.content = ft.Column([
-            ft.Row([
-                self.field_armazenamento,
-                self.field_dias
-            ]),
-            ft.Row([
-                ft.IconButton(ft.Icons.SAVE, on_click=self.salvar_infos)
-            ], alignment=ft.MainAxisAlignment.END)
-        ], spacing=30)
+            ft.Column([
+                ft.ResponsiveRow([
+                    ft.Column([ft.Text("Acondicionamento")], col=4),
+                    ft.Column([ft.Divider(color=ft.Colors.GREY_800)], col=8)
+                ]),
+                ft.ResponsiveRow([
+                    self.field_armazenamento,
+                    ft.Icon(
+                        ft.Icons.INFO_OUTLINE_ROUNDED,
+                        col=1,
+                        tooltip="Capacidade máxima de armazenamento\ndo produto no estoque."
+                    ),
+                    self.field_dias,
+                    ft.Icon(
+                        ft.Icons.INFO_OUTLINE_ROUNDED,
+                        col=1,
+                        tooltip="Quantidade máxima de dias que o\nproduto pode ficar no estoque."
+                    )
+                ]),
+                ft.ResponsiveRow([
+                    ft.Column([ft.Text("Indicadores")], col=3),
+                    ft.Column([ft.Divider(color=ft.Colors.GREY_800)], col=9)
+                ]),
+                ft.ResponsiveRow([
+                    self.field_qtd_media,
+                    ft.Icon(
+                        ft.Icons.INFO_OUTLINE_ROUNDED,
+                        col=1,
+                        tooltip="Quantos(%) a Quantidade Média pode\nestar a baixo da Capacidade."
+                    ),
+                    self.field_frequencia,
+                    ft.Icon(
+                        ft.Icons.INFO_OUTLINE_ROUNDED,
+                        col=1,
+                        tooltip="Quantos(%) a frequência pode estar a baixo\ndos dias máximos de armazenamento."
+                    ),
+                    self.field_preco_medio,
+                    ft.Icon(
+                        ft.Icons.INFO_OUTLINE_ROUNDED,
+                        col=1,
+                        tooltip="Quantos(%) o preço médio pode\nestar acima do menor preço."
+                    ),
+                    self.field_perdas,
+                    ft.Icon(
+                        ft.Icons.INFO_OUTLINE_ROUNDED,
+                        col=1,
+                        tooltip="Quantos(%) a perda pode\nrepresentar do valor total."
+                    )
+                ]),
+                ft.ResponsiveRow([
+                    ft.Column([ft.Text("Imagem")], col=2),
+                    ft.Column([ft.Divider(color=ft.Colors.GREY_800)], col=10)
+                ]),
+                ft.ResponsiveRow([
+                    self.path_imagem,
+                    ft.Container(
+                        ft.IconButton(
+                            ft.Icons.UPLOAD_FILE_ROUNDED,
+                            on_click=self.abrir_pick_files
+                        ),
+                        col=2
+                    )
+                ]),
+                ft.ResponsiveRow([
+                    ft.Column([ft.Text("Salvar")], col=2),
+                    ft.Column([ft.Divider(color=ft.Colors.GREY_800)], col=10)
+                ]),
+                ft.ResponsiveRow([
+                    ft.IconButton(ft.Icons.SAVE, on_click=self.salvar_infos)
+                ], alignment=ft.MainAxisAlignment.END)
+            ], spacing=20)
+        ], scroll=ft.ScrollMode.ALWAYS)
+
+    def abrir_pick_files(self, e):
+        self.pick_files_dialog.pick_files(allow_multiple=True, initial_directory="/home/luiz/gestor_compras/src/assets/imagens/")
+
+    def upload_imagem(self, e: ft.FilePickerResultEvent):
+        arquivo = (
+            ", ".join(map(lambda f: f.name, e.files)) if e.files else "Cancelled!"
+        )
+        self.path_imagem.value = f"imagens/{arquivo}"
+        
+        self.path_imagem.update()
+        self.controle_pagina.atualizar_grade_itens = True
 
     async def salvar_infos(self, e: ft.ControlEvent) -> None:
-        await self.controle.inserir_valores_infos(self.field_armazenamento.value, self.field_dias.value)
-        self.page.open(JanelaNotificacao("Valores Salvos", ft.icons.CHECK))
+        await self.controle.inserir_valores_infos(
+            self.field_armazenamento.value,
+            self.field_dias.value,
+            self.field_qtd_media.value,
+            self.field_frequencia.value,
+            self.field_preco_medio.value,
+            self.field_perdas.value,
+            self.path_imagem.value
+        )
+        self.page.open(JanelaNotificacao("Valores Salvos", ft.Icons.CHECK))
 
     def atualizar_valores(self, dados: list) -> None:
+        variaveis = [
+            self.field_dias,
+            self.field_qtd_media,
+            self.field_frequencia,
+            self.field_preco_medio,
+            self.field_perdas,
+            self.path_imagem
+        ]
         if dados:
             self.field_armazenamento.value = self.formatar_quantidade(dados[0])
-            self.field_dias.value = dados[1]
-
             self.field_armazenamento.update()
-            self.field_dias.update()
+
+            for i, dado in enumerate(dados[1:]):
+                variaveis[i].value = dado
+                variaveis[i].update()
 
     def formatar_quantidade(self, quantidade: str) -> str:
         return quantidade.replace(".", ",")
@@ -458,13 +561,18 @@ class Acondicionamento(ft.Container):
         self.controle = controle
         self.configuracoes()
 
+    def did_mount(self):
+        self.pick_files_dialog = ft.FilePicker(on_result=self.upload_imagem)
+        self.page.overlay.append(self.pick_files_dialog)
+        self.page.update()
+
 
 class CartaoEspecificacoes(ft.Card):
-    def __init__(self, item: ModeloItem) -> None:
+    def __init__(self, item: ModeloItem, controle_pagina: ControlePagina) -> None:
         super().__init__(expand=True, elevation=5)
         self.item = item
         self.tabela = TabelaConsumo()
-        self.acondicionamento = Acondicionamento()
+        self.configurações = Configuracoes(controle_pagina)
         self.content = ft.Container(
             ft.Tabs(
                 selected_index=0,
@@ -482,8 +590,8 @@ class CartaoEspecificacoes(ft.Card):
                         )
                     ),
                     ft.Tab(
-                        text="Acondicionamento",
-                        content=self.acondicionamento
+                        text="Configurações",
+                        content=self.configurações
                     )
                 ],
                 expand=True
@@ -492,12 +600,12 @@ class CartaoEspecificacoes(ft.Card):
 
     def definir_controles(self) -> None:
         self.tabela.definir_controle(ControleItem(self.item, self.tabela))
-        self.acondicionamento.definir_controle(ControleItem(self.item, None))
+        self.configurações.definir_controle(ControleItem(self.item, None))
 
     async def ler_dados(self) -> None:
         self.definir_controles()
         await self.tabela.ler_consumo()
-        await self.acondicionamento.ler_dados()
+        await self.configurações.ler_dados()
 
     def did_mount(self) -> None:
         self.page.run_task(self.ler_dados)
@@ -563,7 +671,7 @@ class Graficos:
             showlegend=False,
             yaxis=dict(tickfont=dict(size=20), gridcolor="#f2f3fa"),
             xaxis=dict(tickfont=dict(size=20), gridcolor="#747575"),
-            barcornerradius=15,
+            barcornerradius=30,
             width=900
         )
         return PlotlyChart(fig, expand=True)
@@ -572,7 +680,8 @@ class Graficos:
 class OperadorDados:
     def preco_operacao(self, df: pd.DataFrame) -> pd.DataFrame:
         freq = self.definir_frequencia(df)
-        return df.set_index("data_operacao").resample(freq).agg({"preco_operacao": "sum"}).ffill()
+        _df = df.set_index("data_operacao").resample(freq).agg({"preco_operacao": "sum"}).ffill()
+        return _df[_df["preco_operacao"] > 0]
     
     def preco_medio(self, df: pd.DataFrame) -> pd.DataFrame:
         freq = self.definir_frequencia(df)
@@ -581,7 +690,8 @@ class OperadorDados:
     def quantidade(self, df: pd.DataFrame) -> pd.DataFrame:
         freq = self.definir_frequencia(df)
         df["quantidade"] = pd.to_numeric(df["quantidade"])
-        return df.set_index("data_operacao").resample(freq).agg({"quantidade": "sum"}).ffill()
+        _df = df.set_index("data_operacao").resample(freq).agg({"quantidade": "sum"}).ffill()
+        return _df[_df["quantidade"] > 0]
     
     def preco_operacao_por_fornecedor(self, df: pd.DataFrame) -> pd.DataFrame:
         df["fornecedor"] = df["fornecedor"].apply(self.__verificar_prefixo)
@@ -608,6 +718,57 @@ class OperadorDados:
         else:
             freq = "ME"
         return freq
+    
+    def estatisticas_cartoes(self, dados: pd.DataFrame) -> tuple:
+        qtd_media = dados["quantidade"].mean()
+        preco_medio = dados["preco"].mean()
+        qtd_total = dados["quantidade"].sum()
+        valor_total = dados["preco_operacao"].sum()
+
+        diff_data = dados["data_operacao"].diff().dropna().values
+        frequencia = (np.mean(diff_data) / np.timedelta64(1, 'D')) if diff_data.size > 0 else 0
+
+        qtd_x_menor_preco = dados["quantidade"] * dados["menor_preco"]
+        perda = dados["preco_operacao"].sum() - qtd_x_menor_preco.sum() + dados["saving"].sum()
+        perda = perda if perda > 0 else 0
+        return (frequencia, qtd_media, preco_medio, qtd_total, valor_total, perda)
+    
+    def verificar_estatisticas(
+            self,
+            frequencia: int,
+            qtd_media: float,
+            preco_medio: float,
+            valor_total: float,
+            perda: float,
+            infos: float
+        ) -> Tuple[bool]:
+        configs, precos = infos
+        porc_freq, porc_qtd_media, porc_preco_medio, porc_perda = self.__gerar_estatisticas(
+            frequencia, qtd_media, preco_medio, valor_total, perda, configs, precos
+        )
+        return (porc_freq <= configs[3], porc_qtd_media <= configs[2], porc_preco_medio <= configs[4], porc_perda <= configs[5])
+
+    def __gerar_estatisticas(
+            self,
+            frequencia: int,
+            qtd_media: float,
+            preco_medio: float,
+            valor_total: float,
+            perda: float,
+            configs: float,
+            precos: float
+        ) -> Tuple[bool]:
+        menor_preco = min([preco[3] for preco in precos])
+        porc_freq = 1 - frequencia / configs[1]
+        porc_qtd_media = 1 - qtd_media / float(configs[0])
+        porc_preco_medio = 1 - menor_preco / preco_medio
+        porc_perda = perda / valor_total
+        return (
+            round(porc_freq*100, 2),
+            round(porc_qtd_media*100, 2),
+            round(porc_preco_medio*100, 2),
+            round(porc_perda*100, 2)
+        )
 
 
 class AreaGrafico(ft.Card, ABC):
@@ -736,27 +897,42 @@ class PainelDashboard(ft.AlertDialog):
 
 
 class PaginaConfigItem(ft.Container):
-    def __init__(self, item: ModeloItem) -> None:
+    def __init__(self, item: ModeloItem, controle_pagina: ControlePagina) -> None:
         super().__init__(expand=True)
         self.item = item
         self.data_fim = datetime.now()
         self.data_inicio = self.data_fim - timedelta(180)
         self.tabela_log = TabelaLogProduto(self.item, ControlePagina(self))
-        self.criar_conteudo()
+        self.bd = BancoDeDados("db_app6.db")
+        self.criar_conteudo(controle_pagina)
 
-    def criar_conteudo(self) -> None:
+    def criar_conteudo(self, controle_pagina: ControlePagina) -> None:
         self.criar_variaveis_textos()
+        self.botao_criar_dash = ft.IconButton(ft.Icons.DASHBOARD_ROUNDED, on_click=self.abrir_painel_dash)
+        self.cartao_especificacoes = CartaoEspecificacoes(self.item, controle_pagina)
+
+        self.icones = (ft.Icons.ARROW_DOWNWARD_ROUNDED, ft.Icons.ARROW_UPWARD_ROUNDED, ft.Icons.CHECK)
+        self.cores = (ft.Colors.RED, ft.Colors.GREEN)
+
+        self.icone_frequencia = ft.Icon(self.icones[0], size=17, color=self.cores[1], visible=False)
+        self.icone_qtd_media = ft.Icon(self.icones[0], size=17, color=self.cores[1], visible=False)
+        self.icone_preco_medio = ft.Icon(self.icones[1], size=17, color=self.cores[1], visible=False)
+        self.icone_perdas = ft.Icon(self.icones[1], size=17, color=self.cores[1], visible=False)
+        
         self.content = ft.ResponsiveRow([
             ft.Column([
                 CartaoFornecedores(self.item),
-                CartaoEspecificacoes(self.item)
+                self.cartao_especificacoes
             ], col=4, spacing=5),
             ft.Column([
                 ft.ResponsiveRow([
                     ft.Card(
                         ft.Container(
                             ft.Column([
-                                ft.Text("Frequência", size=15, height=ft.FontWeight.W_400),
+                                ft.Row([
+                                    ft.Text("Frequencia", size=15, height=ft.FontWeight.W_400),
+                                    self.icone_frequencia
+                                ]),
                                 self.frequencia
                             ]),
                             padding=ft.padding.only(top=10, left=10, bottom=10, right=10)
@@ -766,7 +942,10 @@ class PaginaConfigItem(ft.Container):
                     ft.Card(
                         ft.Container(
                             ft.Column([
-                                ft.Text("Qtd. Média", size=15, height=ft.FontWeight.W_400),
+                                ft.Row([
+                                    ft.Text("Qtd. Média", size=15, height=ft.FontWeight.W_400),
+                                    self.icone_qtd_media
+                                ]),
                                 self.qtd_media
                             ]),
                             padding=ft.padding.only(top=10, left=10, bottom=10)
@@ -776,7 +955,10 @@ class PaginaConfigItem(ft.Container):
                     ft.Card(
                         ft.Container(
                             ft.Column([
-                                ft.Text("Preço Médio", size=15, height=ft.FontWeight.W_400),
+                                ft.Row([
+                                    ft.Text("Preço Médio", size=15, height=ft.FontWeight.W_400),
+                                    self.icone_preco_medio
+                                ]),
                                 self.preco_medio
                             ]),
                             padding=ft.padding.only(top=10, left=10, bottom=10)
@@ -796,19 +978,28 @@ class PaginaConfigItem(ft.Container):
                     ft.Card(
                         ft.Container(
                             ft.Column([
-                                ft.Text("Valor Total", size=15, height=ft.FontWeight.W_400),
+                                ft.Row([
+                                    ft.Text("Valor Total", size=15, height=ft.FontWeight.W_400),
+                                    ft.Icon(ft.Icons.ATTACH_MONEY_ROUNDED, color=ft.Colors.GREEN, size=17)
+                                ]),
                                 self.valor_total
                             ]),
                             padding=ft.padding.only(top=10, left=10, bottom=10)
                         ),
                         col=2, elevation=5
                     ),
-                    ft.Container(
-                        ft.Row([
-                                ft.IconButton(ft.Icons.DASHBOARD_ROUNDED, on_click=self.abrir_painel_dash)
-                            ], alignment=ft.MainAxisAlignment.END
+                    ft.Card(
+                        ft.Container(
+                            ft.Column([
+                                ft.Row([
+                                    ft.Text("Perdas", size=15, height=ft.FontWeight.W_400),
+                                    self.icone_perdas
+                                ]),
+                                self.perda
+                            ]),
+                            padding=ft.padding.only(top=10, left=10, bottom=10)
                         ),
-                        col=2, padding=ft.padding.only(bottom=10)
+                        col=2, elevation=5
                     )
                 ]),
                 ft.Card(
@@ -822,7 +1013,7 @@ class PaginaConfigItem(ft.Container):
                     ), expand=True, elevation=5
                 )
             ], col=8, spacing=5)
-        ])
+        ], spacing=5)
 
     def botoes_calendario(self):
         self.filtro_periodo = ft.PopupMenuButton(
@@ -843,7 +1034,8 @@ class PaginaConfigItem(ft.Container):
                 on_click=self.abrir_calendario_fim,
                 tooltip="Fim"
             ),
-            self.filtro_periodo
+            self.filtro_periodo,
+            self.botao_criar_dash
         ],
         alignment=ft.MainAxisAlignment.END,
         spacing=5
@@ -873,9 +1065,10 @@ class PaginaConfigItem(ft.Container):
     def criar_variaveis_textos(self) -> None:
         self.frequencia = ft.Text("0 Dias")
         self.qtd_media = ft.Text("0")
-        self.preco_medio = ft.Text("0")
+        self.preco_medio = ft.Text("R$ 00,00")
         self.qtd_total = ft.Text("0")
-        self.valor_total = ft.Text("0")
+        self.valor_total = ft.Text("R$ 00,00")
+        self.perda = ft.Text("R$ 00,00")
 
     def criar_calendario(self, data: datetime, on_change: Callable) -> ft.DatePicker:
         return ft.DatePicker(
@@ -902,29 +1095,66 @@ class PaginaConfigItem(ft.Container):
     def atualizar_tabela(self, dados: list) -> None:
         self.tabela_log.adicionar_registros(dados)
 
-    def atualizar_cartoes(self, dados: list) -> None:
-        frequencia, qtd_media, preco_medio, qtd_total, valor_total = self.transformar_dados_cartoes(dados)
-        medida = Utilidades.encurtar_medida(self.item.medida)
-        self.atualizar_valor(self.frequencia, f"{int(frequencia)} Dias")
-        self.atualizar_valor(self.qtd_media, self.formatar_quantidade(qtd_media, medida))
-        self.atualizar_valor(self.preco_medio, f"{locale.currency(round(preco_medio, 2), grouping=True)}")
-        self.atualizar_valor(self.qtd_total, self.formatar_quantidade(qtd_total, medida))
-        self.atualizar_valor(self.valor_total, f"{locale.currency(round(valor_total, 2), grouping=True)}")
+    def atualizar_cartoes(self, infos) -> None:
+        oper_dados = OperadorDados()
+        variaveis = [self.frequencia, self.qtd_media, self.preco_medio, self.qtd_total, self.valor_total, self.perda]
+        if self.df.shape[0]:
+            estatisticas = oper_dados.estatisticas_cartoes(self.df)
+            frequencia, qtd_media, preco_medio, qtd_total, valor_total, perda = estatisticas
+            medida = Utilidades.encurtar_medida(self.item.medida)
+            self.atualizar_valor(self.frequencia, f"{int(frequencia)} Dias")
+            self.atualizar_valor(self.qtd_media, self.formatar_quantidade(qtd_media, medida))
+            self.atualizar_valor(self.preco_medio, f"{locale.currency(round(preco_medio, 2), grouping=True)}")
+            self.atualizar_valor(self.qtd_total, self.formatar_quantidade(qtd_total, medida))
+            self.atualizar_valor(self.valor_total, f"{locale.currency(round(valor_total, 2), grouping=True)}")
+            self.atualizar_valor(self.perda, f"{locale.currency(round(perda, 2), grouping=True)}")
+            if infos[0] is not None:
+                if all(infos[0]):
+                    b_freq, b_qtd_media, b_preco_medio, b_perda = oper_dados.verificar_estatisticas(
+                        frequencia, qtd_media, preco_medio, valor_total, perda, infos
+                    )
+                    self.atualizar_estado_icones(b_freq, b_qtd_media, b_preco_medio, b_perda)
 
-    def transformar_dados_cartoes(self, dados: list) -> tuple:
-        array = np.array([list(dado[3:6]) for dado in dados], dtype=float)
-        array_data = np.sort(np.array([dado[1] for dado in dados], dtype="datetime64"))
+        else:
+            for variavel in variaveis:
+                variavel.value = "0"
+                variavel.update()
+    
+    def atualizar_estado_icones(self, freq, qtd_media, preco_medio, perda):
+        self.icone_frequencia.name = self.icones[2] if freq else self.icones[0]
+        self.icone_frequencia.color = self.cores[1] if freq else self.cores[0]
+        self.icone_frequencia.update()
 
-        qtd_media = np.mean(array[:, 0])
-        preco_medio = np.mean(array[:, 1])
-        qtd_total = np.sum(array[:, 0])
-        valor_total = np.sum(array[:, 2])
+        self.icone_qtd_media.name = self.icones[2] if qtd_media else self.icones[0]
+        self.icone_qtd_media.color = self.cores[1] if qtd_media else self.cores[0]
+        self.icone_qtd_media.update()
 
-        diff_data = np.diff(array_data)
-        frequencia = (np.mean(diff_data) / np.timedelta64(1, 'D')) if diff_data.size > 0 else 0
+        self.icone_preco_medio.name = self.icones[2] if preco_medio else self.icones[1]
+        self.icone_preco_medio.color = self.cores[1] if preco_medio else self.cores[0]
+        self.icone_preco_medio.update()
 
-        return frequencia, qtd_media, preco_medio, qtd_total, valor_total
+        self.icone_perdas.name = self.icones[2] if perda else self.icones[1]
+        self.icone_perdas.color = self.cores[1] if perda else self.cores[0]
+        self.icone_perdas.update()
 
+        self.mostrar_icones()
+
+    def mostrar_icones(self):
+        for icone in [self.icone_frequencia, self.icone_qtd_media, self.icone_preco_medio, self.icone_perdas]:
+            icone.visible = True
+            icone.update()
+
+    async def obter_dados_para_calculo(self):
+        configs = await self.obter_dados_configuracoes()
+        precos = await self.obter_precos_fornecedores()
+        return (configs, precos)
+
+    async def obter_dados_configuracoes(self):
+        return await self.bd.fetch_one(q6.obter_dados_infos_estatisticas, (self.item.id,))
+    
+    async def obter_precos_fornecedores(self):
+        return await self.bd.fetch_all(q6.buscar_relacao_produto_fornecedor, (self.item.id,))
+    
     def atualizar_valor(self, atributo, valor: int):
         atributo.value = valor
         atributo.update()
@@ -943,26 +1173,28 @@ class PaginaConfigItem(ft.Container):
             print(e)
 
     async def ler_dados(self) -> None:
-        bd = BancoDeDados("db_app6.db")
-        dados = await bd.fetch_all(
+        dados = await self.bd.fetch_all(
             q6.obter_logs,
             (self.item.id, self.data_inicio.strftime("%Y-%m-%d"), self.data_fim.strftime("%Y-%m-%d"))
         )
-        if dados:
-            self.atualizar_tabela(dados)
-            self.atualizar_cartoes(dados)
-            self.criar_data_frame(dados)
+        
+        self.alterar_estado_botoes(bool(dados))
+        infos = await self.obter_dados_para_calculo()
+        self.atualizar_tabela(dados)
+        self.criar_data_frame(dados)
+        self.atualizar_cartoes(infos)
 
     async def ler_todos_dados(self) -> None:
-        bd = BancoDeDados("db_app6.db")
-        dados = await bd.fetch_all(
+        dados = await self.bd.fetch_all(
             q6.obter_todos_logs,
             (self.item.id,)
         )
-        if dados:
-            self.atualizar_tabela(dados)
-            self.atualizar_cartoes(dados)
-            self.criar_data_frame(dados)
+
+        self.alterar_estado_botoes(bool(dados))
+        infos = await self.obter_dados_para_calculo()
+        self.atualizar_tabela(dados)
+        self.criar_data_frame(dados)
+        self.atualizar_cartoes(infos)
 
         self.data_inicio = self.df["data_operacao"].min()
         self.data_fim = self.df["data_operacao"].max()
@@ -978,10 +1210,17 @@ class PaginaConfigItem(ft.Container):
                 "preco",
                 "preco_operacao",
                 "marca",
-                "desconto"
+                "saving",
+                "menor_preco"
             ]
         )
         self.df["data_operacao"] = pd.to_datetime(self.df["data_operacao"])
+        self.df["quantidade"] = pd.to_numeric(self.df["quantidade"])
+        self.df.sort_values("data_operacao", inplace=True)
+
+    def alterar_estado_botoes(self, estado: bool) -> None:
+        self.botao_criar_dash.disabled = not estado
+        self.botao_criar_dash.update()
 
     def did_mount(self) -> None:
         self.page.run_task(self.ler_dados)

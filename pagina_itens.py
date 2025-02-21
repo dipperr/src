@@ -20,6 +20,8 @@ class JanelaEntrada(ft.AlertDialog):
         self.fornecedores = defaultdict(list)
         self.dialogo = Dialogo()
         self.controle_item: ControleItem = None
+        self.preco_cadastrado = 0
+        self.relacao_id = 0
         self.criar_conteudo()
 
     def criar_conteudo(self) -> None:
@@ -34,22 +36,20 @@ class JanelaEntrada(ft.AlertDialog):
                         ft.Row([
                             self.entradas[0],
                             self.entradas[3],
-                            self.entradas[5]
-                        ]),
-                        ft.Row([
                             self.entradas[4]
                         ])
-                    ], spacing=20),
+                    ], spacing=30),
                 expand=True),
                 self.dialogo
             ],
             width=500,
-            height=200,
+            height=180,
             alignment=ft.alignment.center
         )
         self.actions = [self.botoes[0], self.botoes[1]]
 
     def criar_entradas(self) -> None:
+        # date.today().strftime("%d-%m-%Y")
         self.entradas = [
             ft.TextField(
                 label="Quantidade",
@@ -70,8 +70,7 @@ class JanelaEntrada(ft.AlertDialog):
                 on_change=self.buscar_preco
             ),
             ft.TextField(label="Preço", width=145, border="underline", prefix_text="R$ "),
-            ft.TextField(label="Data Compra", value=date.today().strftime("%d-%m-%Y"), border="underline", width=150),
-            ft.TextField(label="Desconto", value=0, width=145, border="underline", prefix_text="R$ ")
+            ft.TextField(label="Data Compra", value=date.today().strftime("%d-%m-%Y"), border="underline", width=150)
         ]
 
         for entrada in self.entradas:
@@ -116,6 +115,8 @@ class JanelaEntrada(ft.AlertDialog):
     def buscar_preco(self, e: ft.ControlEvent) -> None:
         for dados in self.fornecedores[int(self.entradas[1].value)]:
             if dados["marca"] == self.entradas[2].value:
+                self.relacao_id = dados["r_id"]
+                self.preco_cadastrado = dados["preco"]
                 self.entradas[3].value = str(dados["preco"]).replace(".", ",")
                 self.entradas[3].update()
 
@@ -138,6 +139,8 @@ class JanelaEntrada(ft.AlertDialog):
         self.entradas[3].update()
 
     def acao_sem_marca(self, dados: list) -> None:
+        self.relacao_id = dados["r_id"]
+        self.preco_cadastrado = dados["preco"]
         self.entradas[2].value = dados["marca"]
         self.entradas[3].value = str(dados["preco"]).replace(".", ",")
         self.entradas[3].update()
@@ -145,18 +148,29 @@ class JanelaEntrada(ft.AlertDialog):
 
     async def salvar_log_entrada(self, e: ft.ControlEvent) -> None:
         if self.controle_item is not None:
+            menor_preco = self.menor_preco()
             await self.controle_item.salvar_log_compra(
+                self.relacao_id,
                 self.entradas[1].value,
+                self.preco_cadastrado,
                 self.entradas[3].value,
                 self.entradas[0].value,
-                self.entradas[4].value,
                 self.entradas[2].value,
-                self.entradas[5].value
+                self.entradas[4].value,
+                menor_preco
             )
             self.limpar_campos()
 
+    def menor_preco(self) -> float:
+        return min(
+            [
+                item["preco"] for _, lista in self.fornecedores.items()
+                for item in lista
+            ]
+        )
+
     def limpar_campos(self) -> None:
-        for entrada in self.entradas[:-2]:
+        for entrada in self.entradas[:-1]:
             entrada.value = None
             entrada.update()
 
@@ -181,6 +195,7 @@ class JanelaEntrada(ft.AlertDialog):
                 fornecedores_dict.update({fornecedor[1]: fornecedor[2]})
                 self.fornecedores[fornecedor[1]].append(
                     {
+                        "r_id": fornecedor[0],
                         "nome": fornecedor[2],
                         "preco": fornecedor[3],
                         "marca": fornecedor[4]
@@ -266,23 +281,35 @@ class CartaoItem(ft.Card):
                 tooltip="Entrada",
                 on_click=self.abrir_janela_entrada
             )
-        ], spacing=5, alignment=ft.MainAxisAlignment.END)
+        ])
 
         self.content = ft.Container(
             content=ft.Column([
-                ft.Text(
-                    value=self.item.nome.title(),
-                    max_lines=1,
-                    overflow=ft.TextOverflow.ELLIPSIS,
-                    weight=ft.FontWeight.W_600,
-                    size=17
+                ft.Container(
+                    ft.Image(
+                        src=self.item.path if self.item.path is not None else "imagens/image-slash.png",
+                        width=50,
+                        height=50,
+                        border_radius=ft.border_radius.all(50)
+                    ), alignment=ft.alignment.center
                 ),
-                ft.Row([
+                ft.Container(
+                    ft.Text(
+                        value=self.item.nome.title(),
+                        max_lines=1,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                        weight=ft.FontWeight.W_600,
+                        size=17
+                    ), alignment=ft.alignment.center
+                ),
+                ft.Container(
                     self.menu_botoes,
-                ], alignment=ft.MainAxisAlignment.END)
-            ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            padding=ft.padding.only(left=10, right=10, top=10, bottom=5)
+                    alignment=ft.alignment.center
+                )
+            ]),
+            padding=ft.padding.only(left=5, right=5, top=10, bottom=5),
+            alignment=ft.alignment.center,
+            border_radius=ft.border_radius.all(15)
         )
 
     def criar_botao(self, content=None, icon=None, tooltip=None, on_click=None) -> ft.IconButton:
@@ -303,7 +330,7 @@ class CartaoItem(ft.Card):
         self.page.open(janela)
 
     def abrir_configuracoes_item(self, e: ft.ControlEvent) -> None:
-        pagina = PaginaConfigItem(self.item)
+        pagina = PaginaConfigItem(self.item, self.controle_pagina)
         self.controle_pagina.alterar_para_barra_voltar()
         self.controle_pagina.adicionar_label_barra(self.item.nome.title())
         self.controle_pagina.add_acao_barra(
@@ -318,6 +345,9 @@ class CartaoItem(ft.Card):
         janela = JanelaRemoverProduto(controle)
         self.page.open(janela)
 
+    def did_mount(self):
+        ...
+
 
 class PaginaItens(ft.Container):
     def __init__(self, controle_pagina: ControlePagina) -> None:
@@ -330,14 +360,16 @@ class PaginaItens(ft.Container):
     def criar_grade_itens(self) -> None:
         self.grade_itens = ft.GridView(
             expand=1,
-            max_extent=215,
-            child_aspect_ratio=2,
+            max_extent=170,
+            child_aspect_ratio=1,
             spacing=10,
             run_spacing=10,
         )
 
     async def criar_cards_itens(self) -> None:
         itens = await self.bd.fetch_all(q6.selecionar_produtos)
+        self.content = self.grade_itens
+
         self.grade_itens.controls = [
             CartaoItem(ModeloItem(*item), ControleGradeItem(self), self.controle_pagina)
             for item in itens

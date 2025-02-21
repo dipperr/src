@@ -7,12 +7,17 @@ class ModeloItem:
             id: Optional[int] = None,
             nome: Optional[str] = None,
             medida: Optional[str] = None,
-            categoria: Optional[str] = None
+            categoria: Optional[str] = None,
+            path: Optional[str] = None
         ) -> None:
         self.id = id
         self.nome = nome
         self.medida = medida
         self.categoria = categoria
+        self.path = path
+
+    def __str__(self):
+        return f"{self.id}, {self.nome}, {self.medida}, {self.categoria}, {self.path}"
 
 
 class ModeloFornecedor:

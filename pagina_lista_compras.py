@@ -118,7 +118,7 @@ class TabelaProdutos(ft.DataTable):
 
     def adicionar_quantidade(self, id: int, quantidade: str, medida: str) -> None:
         for row in self.rows:
-            if int(id) == int(row.cells[0].content.value):
+            if int(id) == int(row.cells[0].content.value) and quantidade:
                 valor_opercao = self.calcular_valor_operacao(row, quantidade)
                 row.cells[5].content.value = self.formatar_quantidade(quantidade, medida)
                 row.cells[6].content.value = valor_opercao
@@ -402,16 +402,73 @@ class PlanilhaListaCompras:
         self.nome_arquivo = nome_full
 
 
+class AgentePreenchedor:
+    def __init__(self, infos_produtos: list, controle_tabelas: ControleTabelas):
+        self.infos_produtos = infos_produtos
+        self.controle_tabelas = controle_tabelas
+
+    async def preencher(self):
+        for produto in self.infos_produtos:
+            controle = ControleItem(ModeloItem(produto[0]), None)
+            fornecedor = await self.buscar_melhor_fornecedor(controle)
+            infos = await self.obter_infos(controle)
+            self.adicionar_fornecedor(fornecedor)
+            self.adicionar_quantidade(infos)
+
+    def adicionar_fornecedor(self, fornecedor: list):
+        self.controle_tabelas.adicionar_fornecedor(fornecedor[0], fornecedor[1], fornecedor[3], fornecedor[2])
+
+    def adicionar_quantidade(self, infos):
+        if all(infos):
+            qtd = self.calcular_quantidade(infos)
+            qtd = self.formatar_quantidade(qtd, infos[2])
+        else:
+            qtd = 0
+        self.controle_tabelas.adicionar_quantidade(infos[0], qtd, infos[2])
+
+    async def buscar_melhor_fornecedor(self, controle: ControleItem):
+        fornecedores = await controle.buscar_fornecedores_relacao()
+        if fornecedores:
+            fornecedor = sorted(fornecedores, key=lambda x: x[3])[0]
+            return (controle.id, fornecedor[2], fornecedor[3], fornecedor[4])
+        else:
+            return (controle.id, "-", 0, "-")
+        
+    async def obter_infos(self, controle: ControleItem):
+        infos = await controle.obter_dados_infos()
+        medida = await controle.obter_medida()
+        return (controle.id, infos[0], medida[0], infos[2])
+    
+    def calcular_quantidade(self, infos):
+        if all(infos):
+            qtd = float(infos[1])
+            qtd_media = infos[3]
+            calc = qtd - (qtd * (qtd_media/100))
+            return round(calc, 3)
+            return 0
+        
+    def formatar_quantidade(self, qtd, medida):
+        if medida == "unidade":
+            qtd = int(qtd)
+        else:
+            qtd_split = str(qtd).split(".")
+            zeros = "0" * (3 - len(qtd_split[1]))
+            qtd = qtd_split[0] + "." + qtd_split[1] + zeros
+        return qtd
+
+
 class PaginaListacompras(ft.Container):
-    def __init__(self, infos_produtos: list) -> None:
+    def __init__(self, infos_produtos: list, preencher_automatico: bool) -> None:
         super().__init__(expand=True)
         self.infos_produtos = infos_produtos
+        self.preencher_automatico = preencher_automatico
         self.tabela_produtos = TabelaProdutos()
         self.tabela_fornecedores = TabelaFornecedor()
         self.painel_infos = PainelInfos()
         self.controle_tabelas = ControleTabelas(
             self.tabela_produtos, self.tabela_fornecedores, self.painel_infos
         )
+        self.agente_preenchedor = AgentePreenchedor(infos_produtos, self.controle_tabelas)
         self.content = ft.ResponsiveRow([
             ft.Column([
                 ft.Card(
@@ -463,3 +520,5 @@ class PaginaListacompras(ft.Container):
         self.tabela_fornecedores.definir_controle(self.controle_tabelas)
         self.painel_infos.definir_controle(self.controle_tabelas)
         self.adicionar_registros_primarios()
+        if self.preencher_automatico:
+            self.page.run_task(self.agente_preenchedor.preencher)

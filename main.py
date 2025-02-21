@@ -8,8 +8,9 @@ from openpyxl.worksheet.dimensions import ColumnDimension, DimensionHolder
 from openpyxl.utils import get_column_letter
 from datetime import datetime
 import os
+from datetime import date
 
-from acessorios import BancoDeDados, Dialogo, BuscarCep, JanelaNotificacao
+from acessorios import BancoDeDados, Dialogo, BuscarCep, JanelaNotificacao, Utilidades
 from pagina_dash import PaginaDashboard
 from modelos import ModeloFornecedor, ModeloItem
 from controles import ControleItem, ControleFornecedor, ControleGradeItem, ControlePagina, ControleVisualizacao
@@ -82,7 +83,7 @@ class JanelaAdcionarItem(ft.AlertDialog):
 
     def criar_entradas(self) -> None:
         lista_categorias = [
-            "Carnes", "Condimentos", "Frios", "Verdura", "Legume", "Fruta", "Limpeza"
+            "Carnes", "Condimentos", "Frios", "Verduras", "Legumes", "Frutas", "Limpeza"
         ]
 
         self.entradas = [
@@ -296,7 +297,12 @@ class JanelaListaCompras(ft.AlertDialog):
     def __init__(self, controle_pagina: ControlePagina) -> None:
         super().__init__(modal=True)
         self.controle_pagina = controle_pagina
-        self.dropdown_categoria = ft.Dropdown(label="Categoria", width=200, on_change=self.filtrar_categoria)
+        self.dropdown_categoria = ft.Dropdown(
+            label="Categoria",
+            width=200,
+            border="underline",
+            on_change=self.filtrar_categoria
+        )
         self.tabela_produtos = ft.DataTable(
             columns=[
                 ft.DataColumn(ft.Text("id"), visible=False),
@@ -313,13 +319,24 @@ class JanelaListaCompras(ft.AlertDialog):
             ],
             col=12
         )
+        self.preencher_automatico = ft.Switch(
+            label="Preencher Automático",
+            value=True,
+            label_position=ft.LabelPosition.LEFT
+        )
         self.lista_compras = []
         self.criar_conteudo()
 
     def criar_conteudo(self) -> None:
         self.content = ft.Container(
             ft.Column([
-                self.dropdown_categoria,
+                ft.Container(
+                    ft.Row([
+                        self.dropdown_categoria,
+                        self.preencher_automatico
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    padding=ft.padding.only(left=5)
+                ),
                 ft.Container(
                     ft.ResponsiveRow([
                         ft.Column([
@@ -331,7 +348,7 @@ class JanelaListaCompras(ft.AlertDialog):
                                         ])
                                     ], scroll=ft.ScrollMode.ALWAYS),
                                     padding=ft.padding.only(top=10, bottom=10), expand=True
-                                ),expand=True, elevation=5
+                                ),expand=True
                             )
                         ], col=6),
                         ft.Column([
@@ -344,12 +361,12 @@ class JanelaListaCompras(ft.AlertDialog):
                                     ], scroll=ft.ScrollMode.ALWAYS),
                                     padding=ft.padding.only(top=10, bottom=10), expand=True
                                 ),
-                                expand=True, elevation=5
+                                expand=True
                             )
                         ], col=6)
                     ]), expand=True
                 )
-            ]), width=650
+            ]), width=650, height=500
         )
         self.actions = [
             ft.TextButton(
@@ -444,7 +461,7 @@ class JanelaListaCompras(ft.AlertDialog):
                 (row.cells[0].content.value, row.cells[1].content.value)
                 for row in self.tabela_compra.rows
             ]
-            pagina = PaginaListacompras(infos_produtos)
+            pagina = PaginaListacompras(infos_produtos, self.preencher_automatico.value)
             self.page.close(self)
             self.controle_pagina.alterar_para_barra_voltar()
             self.controle_pagina.add_acao_barra(
@@ -512,7 +529,12 @@ class PlanilhaCotacao:
 class JanelaCotacao(ft.AlertDialog):
     def __init__(self) -> None:
         super().__init__(modal=True)
-        self.dropdown_categoria = ft.Dropdown(label="Categoria", width=200, on_change=self.filtrar_categoria)
+        self.dropdown_categoria = ft.Dropdown(
+            label="Categoria",
+            width=200,
+            border="underline",
+            on_change=self.filtrar_categoria
+        )
         self.tabela_produtos = ft.DataTable(
             columns=[
                 ft.DataColumn(ft.Text("id"), visible=False),
@@ -548,8 +570,7 @@ class JanelaCotacao(ft.AlertDialog):
                                         ])
                                     ], scroll=ft.ScrollMode.ALWAYS),
                                     padding=ft.padding.only(top=10, bottom=10), expand=True
-                                ),expand=True,
-                                elevation=5
+                                ),expand=True
                             )
                         ], col=6),
                         ft.Column([
@@ -562,12 +583,12 @@ class JanelaCotacao(ft.AlertDialog):
                                     ], scroll=ft.ScrollMode.ALWAYS),
                                     padding=ft.padding.only(top=10, bottom=10), expand=True
                                 ),
-                                expand=True, elevation=5
+                                expand=True
                             )
                         ], col=6)
                     ]), expand=True
                 )
-            ]), width=650
+            ]), width=650, height=500
         )
         self.actions = [
             ft.TextButton(
@@ -617,7 +638,7 @@ class JanelaCotacao(ft.AlertDialog):
                                             ])
                                         ], scroll=ft.ScrollMode.ALWAYS),
                                         padding=ft.padding.only(top=10, bottom=10), expand=True
-                                    ),expand=True, elevation=5
+                                    ),expand=True
                                 )
                             ], col=6),
                             ft.Column([
@@ -630,13 +651,13 @@ class JanelaCotacao(ft.AlertDialog):
                                         ], scroll=ft.ScrollMode.ALWAYS),
                                         padding=ft.padding.only(top=10, bottom=10), expand=True
                                     ),
-                                    expand=True, elevation=5
+                                    expand=True
                                 )
                             ], col=6)
                         ]), expand=True
                     ),
                     self.dialogo
-                ], alignment=ft.alignment.center), width=650
+                ], alignment=ft.alignment.center), width=650, height=500
             )
             self.actions.pop(0)
             self.actions.insert(
@@ -774,6 +795,156 @@ class JanelaCotacao(ft.AlertDialog):
         self.page.run_task(self.ler_dados)
 
 
+class JanelaEntradaItemVariavel(ft.AlertDialog):
+    def __init__(self) -> None:
+        super().__init__(
+            title=ft.Text(value="Entrada De Item Variável"),
+            modal=True
+        )
+        self.dialogo = Dialogo()
+        self.controle_item: ControleItem = None
+        self.criar_conteudo()
+
+    def criar_conteudo(self) -> None:
+        self.criar_botoes()
+        self.criar_entradas()
+
+        self.content = ft.Stack(
+            [
+                ft.Container(
+                    ft.Column([
+                        ft.Row([
+                            self.entradas[0],
+                            self.entradas[1]
+                        ]),
+                        ft.Row([
+                            self.entradas[2],
+                            self.entradas[3],
+                            self.entradas[4]
+                        ]),
+                        ft.Row([
+                            self.entradas[5],
+                            self.entradas[6],
+                            self.entradas[7]
+                        ])
+                    ], spacing=30),
+                expand=True),
+                self.dialogo
+            ],
+            width=520,
+            height=230,
+            alignment=ft.alignment.center
+        )
+        self.actions = [self.botoes[0], self.botoes[1]]
+
+    def criar_entradas(self) -> None:
+        self.entradas = [
+            ft.TextField(label="Nome Item", border="underline", width=270),
+            ft.TextField(label="Marca", width=240, border="underline"),
+            self.criar_dropdown(label="Fornecedor", width=230, options=[]),
+            ft.TextField(label="Preço", width=140, border="underline", prefix_text="R$ "),
+            self.criar_dropdown(
+                label="Medida",
+                width=130,
+                options=["Quilograma", "Litro", "Unidade"],
+                on_change=self.acao_medida
+            ),
+            ft.TextField(label="Quantidade", width=150, border="underline"),
+            self.criar_dropdown(
+                label="Categoria",
+                width=190,
+                options=["Carnes", "Condimentos", "Frios", "Verduras", "Legumes", "Frutas", "Limpeza"]
+            ),
+            ft.TextField(label="Data", border="underline", width=160, value=date.today().strftime("%d-%m-%Y"))
+        ]
+
+        for entrada in self.entradas:
+            entrada.on_focus = self.alterar_para_cor_padrao
+
+    def acao_medida(self, e: ft.ControlEvent) -> None:
+        self.entradas[5].suffix_text = Utilidades.encurtar_medida(self.entradas[4].value.lower())
+        self.entradas[5].update()
+
+    def criar_dropdown(
+        self,
+        label: str,
+        options: List[str],
+        width: int,
+        value: Optional[str]=None,
+        on_change: Optional[Callable[[ft.ControlEvent], None]]=None,
+        disabled: bool=False
+    ) -> ft.Dropdown:
+        return ft.Dropdown(
+            width=width,
+            label=label,
+            options=[
+                ft.dropdown.Option(o)
+                for o in options
+            ],
+            value=value,
+            border="underline",
+            on_change=on_change,
+            disabled=disabled
+        )
+
+    def criar_botoes(self) -> None:
+        self.botoes = [
+            ft.TextButton(
+                text="Salvar",
+                style=ft.ButtonStyle(bgcolor={ft.ControlState.HOVERED: ft.Colors.GREEN_100}),
+                on_click=self.salvar_log_entrada
+            ),
+            ft.TextButton(
+                text="Cancelar",
+                style=ft.ButtonStyle(bgcolor={ft.ControlState.HOVERED: ft.Colors.RED_100}),
+                on_click=self.cancelar
+            )
+        ]
+
+    def cancelar(self, e: ft.ControlEvent) -> None:
+        self.page.close(self)
+
+    async def salvar_log_entrada(self, e: ft.ControlEvent) -> None:
+        if self.controle_item is not None:
+            await self.controle_item.salvar_log_compra_item_variavel(
+                self.entradas[0].value,
+                self.entradas[1].value,
+                self.entradas[2].value,
+                self.entradas[3].value,
+                self.entradas[4].value,
+                self.entradas[5].value,
+                self.entradas[6].value,
+                self.entradas[7].value
+            )
+            self.limpar_campos()
+
+    def limpar_campos(self) -> None:
+        for entrada in self.entradas[:-1]:
+            entrada.value = None
+            entrada.update()
+
+    def alterar_para_cor_padrao(self, e: ft.ControlEvent) -> None:
+        e.control.label_style = ft.TextStyle(color=None)
+        e.control.update()
+
+    async def buscar_fornecedores(self) -> None:
+        controle_forncedor = ControleFornecedor()
+        fornecedores = await controle_forncedor.obter_fornecedores()
+        if fornecedores:
+            for fornecedor in fornecedores:
+                self.entradas[2].options.append(
+                    ft.dropdown.Option(key=fornecedor[0], text=fornecedor[1])
+                )
+
+            self.entradas[2].update()
+
+    def definir_controle(self, controle: ControleItem) -> None:
+        self.controle_item = controle
+
+    def did_mount(self):
+        self.page.run_task(self.buscar_fornecedores)
+
+
 class PaginaPrincipal(ft.Container):
     def __init__(self) -> None:
         super().__init__(expand=True)
@@ -784,13 +955,19 @@ class PaginaPrincipal(ft.Container):
             self.update()
 
 
+class PaginaEntradasVariaveis(ft.Container):
+    def __init__(self):
+        super().__init__(expand=True)
+        self.content = ft.Text("pagina entradas variaveis")
+
+
 class Aplicativo(ft.Container):
     def __init__(self) -> None:
         super().__init__(expand=True)
         self.criar_botoes()
         self.pagina_principal = PaginaPrincipal()
         self.barra_menu_voltar = ft.AppBar(
-            bgcolor=ft.Colors.PRIMARY_CONTAINER,
+            bgcolor=ft.Colors.BLUE_100,
             leading=ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=self.voltar_pagina_itens)
         )
         self.controle_pagina = ControlePagina(self.pagina_principal, self.barra_menu_voltar)
@@ -816,13 +993,13 @@ class Aplicativo(ft.Container):
             icon=ft.Icons.FILTER_ALT,
             items=[
                 ft.PopupMenuItem(text=cat, on_click=self.filtrar_categoria, checked=not i)
-                for i, cat in enumerate(["Todos", "Carnes", "Condimentos", "Frios", "Verdura", "Legume", "Fruta", "Limpeza"])
+                for i, cat in enumerate(["Todos", "Carnes", "Condimentos", "Frios", "Verduras", "Legumes", "Frutas", "Limpeza"])
             ],
             icon_color=ft.Colors.BLACK87
         )
         self.barra_menu_principal = ft.AppBar(
             center_title=False,
-            bgcolor=ft.Colors.PRIMARY_CONTAINER,
+            bgcolor=ft.Colors.BLUE_100,
             actions=[
                 self.barra_pesquisa,
                 ft.VerticalDivider(opacity=0),
@@ -856,6 +1033,17 @@ class Aplicativo(ft.Container):
                             text="Cotação",
                             icon=ft.Icons.ATTACH_MONEY_ROUNDED,
                             on_click=self.abrir_janela_cotacao
+                        ),
+                        ft.PopupMenuItem(),
+                        ft.PopupMenuItem(
+                            text="Item Variável",
+                            icon=ft.Icons.ARROW_UPWARD_ROUNDED,
+                            on_click=self.abrir_janela_entrada_item_variavel
+                        ),
+                        ft.PopupMenuItem(
+                            text="Entradas Variáveis",
+                            icon=ft.Icons.ACCESS_TIME_ROUNDED,
+                            on_click=self.pagina_entradas_variaveis
                         )
                     ],
                     icon_color=ft.Colors.BLACK87
@@ -871,7 +1059,7 @@ class Aplicativo(ft.Container):
             item.update()
         self.controle_grade_item.fitrar_categoria(e.control.text)
 
-    def voltar_pagina_itens(self, e: ft.ControlEvent) -> None:
+    async def voltar_pagina_itens(self, e: ft.ControlEvent) -> None:
         self.page.overlay.clear()
         self.barra_menu_voltar.actions.clear()
         self.barra_menu_voltar.title = None
@@ -879,6 +1067,9 @@ class Aplicativo(ft.Container):
         self.page.appbar = self.barra_menu_principal
         self.pagina_principal.atualizar_conteudo(self.pagina_itens, atualizar=False)
         self.page.update()
+        if self.controle_pagina.atualizar_grade_itens:
+            self.controle_pagina.atualizar_grade_itens = False
+            await self.pagina_itens.criar_cards_itens()
 
     def pagina_dashboad(self, e: ft.ControlEvent) -> None:
         pagina = PaginaDashboard()
@@ -907,6 +1098,17 @@ class Aplicativo(ft.Container):
         janela = JanelaCotacao()
         self.page.open(janela)
 
+    def abrir_janela_entrada_item_variavel(self, e: ft.ControlEvent) -> None:
+        janela = JanelaEntradaItemVariavel()
+        controle = ControleItem(None, janela)
+        janela.definir_controle(controle)
+        self.page.open(janela)
+
+    def pagina_entradas_variaveis(self, e: ft.ControlEvent):
+        pagina = PaginaEntradasVariaveis()
+        self.controle_pagina.alterar_para_barra_voltar()
+        self.controle_pagina.atualizar_pagina(pagina)
+
     def did_mount(self) -> None:
         self.criar_barra_menu()
         self.page.run_task(self.pagina_itens.criar_cards_itens)
@@ -919,8 +1121,7 @@ def main(page: ft.Page) -> None:
     # page.window.title_bar_hidden = True
     # page.window.frameless = True
     # page.window.full_screen = True
-    page.window.min_height = 700
-    page.window.min_width = 1100
+    page.window.maximized = True
     page.locale_configuration = ft.LocaleConfiguration(
         supported_locales=[ft.Locale("en", "US"), ft.Locale("pt", "BR")],
         current_locale=ft.Locale("pt", "BR")

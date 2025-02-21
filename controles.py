@@ -16,20 +16,45 @@ class LogProduto:
             self,
             id_produto: int,
             id_fornecedor: int,
-            preco: float,
+            preco_cadastrado: str,
+            preco_compra: float,
             quantidade: str,
             data_operacao: str,
             marca: str,
-            desconto: float
+            menor_preco: float
         ) -> None:
-        preco_op = self.calcular_preco_operacao(preco, quantidade, desconto)
+        preco_operacao = self.calcular_preco_operacao(preco_compra, quantidade)
+        saving = self.calcular_saving(preco_cadastrado, quantidade, preco_operacao)
         await self.bd.execute(
             q6.criar_log,
-            (id_produto, id_fornecedor, preco, quantidade, preco_op, data_operacao, marca, desconto)
+            (id_produto, id_fornecedor, preco_compra, quantidade, preco_operacao, data_operacao, marca, saving, menor_preco)
         )
 
-    def calcular_preco_operacao(self, preco: float, quantidade: str, desconto: float) -> float:
-        return float(preco) * float(quantidade) - float(desconto)
+    async def criar_log_item_variavel(
+        self,
+        nome: str,
+        marca: str,
+        id_fornecedor: int,
+        preco: float,
+        medida: str,
+        quantidade: str,
+        categoria: str,
+        data: str
+    ) -> None:
+        preco_operacao = self.calcular_preco_operacao(preco, quantidade)
+        await self.bd.execute(
+            q6.criar_log_item_variavel,
+            (id_fornecedor, nome, medida, preco, quantidade, categoria, marca, data, preco_operacao)
+        )
+
+    def calcular_preco_operacao(self, preco: float, quantidade: str) -> float:
+        total = preco * float(quantidade)
+        return round(total, 2)
+    
+    def calcular_saving(self, preco_cadastrado: float, quantidade: str, preco_operacao: float) -> float:
+        total_com_preco_cadastrado = float(preco_cadastrado) * float(quantidade)
+        total = total_com_preco_cadastrado - preco_operacao
+        return round(total, 2)
 
 
 class ControleLog:
@@ -39,7 +64,6 @@ class ControleLog:
         self.bd = BancoDeDados("db_app6.db")
 
     async def apagar_log_compra(self) -> None:
-        print(f"apagando log ed id: {self.id_log}")
         await self.bd.execute(q6.apagar_log, (self.id_log,))
         await self.visualizacao.atualizar_dados()
 
@@ -142,20 +166,36 @@ class ControleItem:
 
     async def salvar_log_compra(
             self,
+            relacao_id: int,
             fornecedor: str,
-            preco: float,
+            preco_cadastrado: str,
+            preco_compra: str,
             quantidade: str,
-            data: str,
             marca: str,
-            desconto: float
+            data: str,
+            menor_preco: float
         ) -> None:
-        if all([quantidade, fornecedor, marca, preco, data]):
+        if all([quantidade, fornecedor, marca, preco_cadastrado, preco_compra, data]):
             try:
-                quantidade = self.formatar_valor(quantidade)
-                preco = float(self.formatar_valor(preco))
-                data_formatada = datetime.strptime(data, "%d-%m-%Y").strftime('%Y-%m-%d')
+                quantidade, preco_compra, data_formatada = self.formatar_valores(quantidade, preco_compra, data)
+                aumentou = await self.verificar_aumento_preco(relacao_id, preco_cadastrado, preco_compra)
+                if aumentou:
+                    self.visualizacao.dialogo.generico(
+                        ft.Icons.INFO_OUTLINE_ROUNDED,
+                        "O preço desse produto aumentou\ne será atualizado automaticamente."
+                    )
+                    await asyncio.sleep(4)
+                    self.visualizacao.dialogo.limpar()
+                    
+                    if menor_preco == preco_cadastrado:
+                        menor_preco = preco_compra
+
+                    preco_cadastrado = preco_compra
+
                 self.visualizacao.dialogo.salvando()
-                await LogProduto().criar_log(self.modelo.id, fornecedor, preco, quantidade, data_formatada, marca, desconto)
+                await LogProduto().criar_log(
+                    self.modelo.id, fornecedor, preco_cadastrado, preco_compra, quantidade, data_formatada, marca, menor_preco
+                )
             except Exception as e:
                 print(e)
                 self.visualizacao.dialogo.generico(ft.Icons.ERROR, "Houve um erro ao salvar")
@@ -167,6 +207,51 @@ class ControleItem:
                 self.visualizacao.dialogo.limpar()
         else:
             await self.visualizacao.mostrar_erro_campo_vazio()
+
+    async def salvar_log_compra_item_variavel(
+            self,
+            nome: str,
+            marca: str,
+            id_fornecedor: int,
+            preco: float,
+            medida: str,
+            quantidade: str,
+            categoria: str,
+            data: str
+        ) -> None:
+        if all([nome, id_fornecedor, preco, medida, quantidade, categoria, data]):
+            if not marca:
+                marca = "-"
+            try:
+                quantidade, preco, data = self.formatar_valores(quantidade, preco, data)
+
+                self.visualizacao.dialogo.salvando()
+                await LogProduto().criar_log_item_variavel(
+                    nome, marca, id_fornecedor, preco, medida, quantidade, categoria, data
+                )
+            except Exception as e:
+                print(e)
+                self.visualizacao.dialogo.generico(ft.Icons.ERROR, "Houve um erro ao salvar")
+                await asyncio.sleep(1)
+            else:
+                self.visualizacao.dialogo.salvo()
+                await asyncio.sleep(1)
+            finally:
+                self.visualizacao.dialogo.limpar()
+        else:
+            await self.visualizacao.mostrar_erro_campo_vazio()
+
+    async def verificar_aumento_preco(self, relacao_id: int, preco_cadastrado: str, preco_compra: str):
+        if preco_compra > preco_cadastrado:
+            await self.bd.execute(q6.atualizar_preco_relacao, (preco_compra, relacao_id))
+            return True
+        return False
+
+    def formatar_valores(self, quantidade, preco_compra, data):
+        _quantidade = self.formatar_valor(quantidade)
+        _preco_compra = float(self.formatar_valor(preco_compra))
+        _data_formatada = datetime.strptime(data, "%d-%m-%Y").strftime('%Y-%m-%d')
+        return _quantidade, _preco_compra, _data_formatada
 
     async def buscar_fornecedores_relacao(self) -> list:
         return await ControleFornecedor().buscar_fornecedores_relacao(self.modelo.id)
@@ -203,9 +288,23 @@ class ControleItem:
     async def obter_dados_infos(self) -> list:
         return await self.bd.fetch_one(q6.obter_dados_infos, (self.modelo.id,))
     
-    async def inserir_valores_infos(self, armazenamento: str, dias: int) -> None:
+    async def inserir_valores_infos(
+            self,
+            armazenamento: str,
+            dias: int,
+            qtd_media: int,
+            freq: int,
+            preco_medio: int,
+            perdas: int,
+            path: str
+        ) -> None:
         armazenamento = self.formatar_valor(armazenamento)
-        await self.bd.execute(q6.inserir_valores_infos, (self.modelo.id, armazenamento, dias, armazenamento, dias))
+        variaveis = [armazenamento, dias, qtd_media, freq, preco_medio, perdas, path]
+        await self.bd.execute(
+            q6.inserir_valores_infos, (
+                self.modelo.id, *variaveis, *variaveis
+            )
+        )
 
     def formatar_valor(self, valor: Union[int, float]) -> str:
         return str(valor).replace(".", "").replace(",", ".")
@@ -237,6 +336,7 @@ class ControlePagina:
     def __init__(self, pagina_pricipal: ft.Control, barra_menu_voltar: ft.Control) -> None:
         self.pagina_principal = pagina_pricipal
         self.barra_menu_voltar = barra_menu_voltar
+        self.atualizar_grade_itens = False
 
     def atualizar_pagina(self, conteudo: ft.Control) -> None:
         self.pagina_principal.atualizar_conteudo(conteudo)
